@@ -21,6 +21,7 @@ Original uploads (full-quality PNG/JPG) are **not** kept here: they stay in the 
 2. **Actions → Publish site → Run workflow.** Pages are now published without a password at https://jerrin-v.github.io/portfolio/.
 3. To use your own domain: **Settings → Pages → Custom domain** → `www.jerrindesign.com`, then at your domain registrar add a
    `CNAME` record `www` → `jerrin-v.github.io` (and the four GitHub Pages `A` records for the bare domain, see GitHub's Pages docs).
+   With a custom domain the site sits at the domain root, so also add the repository variable `SITE_BASE` = `/` and run Publish site again.
 4. To lock it again: delete the variable (or set it to `false`) and run Publish site.
 
 ## Option B — a complete offline copy on your Mac

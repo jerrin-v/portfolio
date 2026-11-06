@@ -174,9 +174,14 @@ function mediaKey(priv) {
 const extOf = (u) => { const m = /\.(webp|jpe?g|png|gif|avif|svg|mp4|webm)$/i.exec(u.split("?")[0]); return m ? m[1].toLowerCase().replace("jpeg", "jpg") : "bin"; };
 const idOf = (u) => nodeCrypto.createHash("sha1").update(u).digest("hex").slice(0, 20);
 // GitHub copy only: one file per image (drop Wix size variants), Wix contact form removed (the email link stays).
+// GitHub Pages serves the site under /<repo>/, so root links ("/jv-icon.svg") become relative and the 404 page's
+// <base href="/"> points at the site folder. SITE_BASE overrides it (set it to "/" when a custom domain is used).
+const BASE = (process.env.SITE_BASE || "").trim() || (process.env.GITHUB_REPOSITORY ? "/" + process.env.GITHUB_REPOSITORY.split("/")[1] + "/" : "/");
 function prepPage(html) {
   return html
-    .replace(/\s(?:srcset|imagesrcset|sizes|imagesizes)="[^"]*"/g, "")
+    .replace(/(\s(?:href|src))="\/(?=[^\/"])/g, '$1="')
+    .replace(/<base href="\/">/, `<base href="${BASE}">`)
+    .replace(/\s(?:srcset|imagesrcset|sizes|imagesizes)="(?!\d+x\d+")[^"]*"/g, "")
     .replace(/<script[^>]*src="js\/contact\.js"[^>]*><\/script>/g, "")
     .replace(/<div id="contact-form"[\s\S]*?<\/noscript>\s*<\/div>/, "");
 }
