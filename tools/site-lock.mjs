@@ -4,7 +4,7 @@
 // (RSA-OAEP-SHA256 wraps a random AES-256-GCM key). Only the GitHub workflow can open it, with the private key
 // in the SITE_PACK_KEY secret. It then locks every page with the SITE_PASSWORD secret and publishes to GitHub Pages.
 //
-//   node tools/site-lock.mjs pack  <plainDir> <out.pack>        seal a plain build (needs only the public key)
+//   node tools/site-lock.mjs pack  <plainDir> <out.pack> [ver]  seal a plain build (needs only the public key)
 //   node tools/site-lock.mjs build <out.pack> <outDir>          workflow: unseal + lock with $SITE_PASSWORD (needs $SITE_PACK_KEY)
 //
 // Page lock: gzip + AES-GCM-256, key from PBKDF2-SHA256 (600,000 rounds), one salt for the whole site so one
@@ -33,7 +33,7 @@ function walk(dir, base = dir, out = []) {
   }
   return out;
 }
-async function pack(dir, outFile) {
+async function pack(dir, outFile, version = "") {
   const files = {};
   for (const rel of walk(dir).sort()) files[rel.split(path.sep).join("/")] = b64(fs.readFileSync(path.join(dir, rel)));
   const data = await gz(te.encode(JSON.stringify(files)));
@@ -42,7 +42,7 @@ async function pack(dir, outFile) {
   const ct = Buffer.concat([c.update(data), c.final(), c.getAuthTag()]);
   const pub = fs.readFileSync(path.join(HERE, "site.pub.pem"), "utf8");
   const wrapped = nodeCrypto.publicEncrypt({ key: pub, padding: nodeCrypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" }, key);
-  fs.writeFileSync(outFile, JSON.stringify({ v: 1, k: b64(wrapped), iv: b64(iv), ct: b64(ct) }));
+  fs.writeFileSync(outFile, JSON.stringify({ v: 1, ver: version, k: b64(wrapped), iv: b64(iv), ct: b64(ct) }));
   console.log("packed", Object.keys(files).length, "files");
 }
 async function unpack(packFile, privPem) {
@@ -92,6 +92,7 @@ const CSS = `.lk{min-height:calc(100svh - var(--hh));display:grid;grid-template-
 [data-theme="dark"] .lk-err{color:#ff7a7f}
 .lk-note{font-size:14px;line-height:1.5;color:var(--muted);margin:32px 0 0;padding-top:16px;border-top:1px solid var(--line)}
 .lk-note a{color:var(--ink);text-underline-offset:3px}
+.lk-ts{font-size:12px;line-height:1.4;color:var(--muted);margin:12px 0 0;font-variant-numeric:tabular-nums}
 html:not(.sg-ok) .lk-in{visibility:hidden}`;
 
 // JVLOCK.open lets oxds.html read its encrypted data file (oxds-oxr.html) with the same key.
@@ -121,7 +122,7 @@ f.addEventListener('submit',function(ev){ev.preventDefault();var v=i.value.trim(
 })();`;
 
 const pick = (h, re) => { const m = re.exec(h); return m ? m[0] : ""; };
-function gate(blob, plain) {
+function gate(blob, plain, stamp = "") {
   // Same layout as the design-system password screen: the page's head (no SEO text), site header, gate, footer.
   const head = plain.slice(plain.indexOf("<head>") + 6, plain.indexOf("</head>"))
     .replace(/<style[\s\S]*?<\/style>/g, "")
@@ -140,7 +141,7 @@ function gate(blob, plain) {
 </head>
 <body>
 ${header}
-<main id="main" class="lk"><div class="lk-in"><p class="lk-eb">Portfolio</p><h1>Jerrin Varghese</h1><p class="lk-p">This copy of the portfolio is password protected. Enter the password to view it.</p><form id="sg-f" novalidate><label for="sg-pw">Password</label><div class="lk-row"><span class="lk-pw"><input id="sg-pw" type="password" autocomplete="current-password" required><button type="button" class="lk-eye" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span><button type="submit">Unlock</button></div><label class="lk-rm"><input id="sg-rm" type="checkbox"> Remember me for 1 day</label><p class="lk-err" id="sg-err" role="alert" aria-live="assertive"></p></form><p class="lk-note">The public site is <a href="https://www.jerrindesign.com">jerrindesign.com</a>.</p></div><noscript><p class="lk-err">Turn on JavaScript to open this page.</p></noscript></main>
+<main id="main" class="lk"><div class="lk-in"><p class="lk-eb">Portfolio</p><h1>Jerrin Varghese</h1><p class="lk-p">This copy of the portfolio is password protected. Enter the password to view it.</p><form id="sg-f" novalidate><label for="sg-pw">Password</label><div class="lk-row"><span class="lk-pw"><input id="sg-pw" type="password" autocomplete="current-password" required><button type="button" class="lk-eye" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span><button type="submit">Unlock</button></div><label class="lk-rm"><input id="sg-rm" type="checkbox"> Remember me for 1 day</label><p class="lk-err" id="sg-err" role="alert" aria-live="assertive"></p></form><p class="lk-note">The public site is <a href="https://www.jerrindesign.com">jerrindesign.com</a>.</p>${stamp ? `<p class="lk-ts">${stamp}</p>` : ""}</div><noscript><p class="lk-err">Turn on JavaScript to open this page.</p></noscript></main>
 ${footer}
 <script type="application/octet-stream" id="jv-site">${blob}</script>
 <script>${JS}</script>
@@ -155,6 +156,9 @@ async function build(packFile, outDir) {
   if (!priv) throw new Error("Secret SITE_PACK_KEY is missing.");
   if (!pw) throw new Error("Secret SITE_PASSWORD is missing. Add it under Settings → Secrets and variables → Actions.");
   const files = await unpack(packFile, priv);
+  const ver = JSON.parse(fs.readFileSync(packFile, "utf8")).ver || "";
+  const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Dubai", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date());
+  const stamp = (ver ? "Version " + ver + " · " : "") + "Published " + when.replace(/ (am|pm)$/i, (m) => m.toUpperCase()) + " (Dubai time)";
   const salt = crypto.getRandomValues(new Uint8Array(16)), key = await keyFor(pw, salt);
   fs.rmSync(outDir, { recursive: true, force: true });
   let pages = 0;
@@ -166,7 +170,7 @@ async function build(packFile, outDir) {
       const plain = buf.toString("utf8"), blob = await enc(plain, key, salt);
       fs.writeFileSync(out, DATA.has(rel)
         ? `<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><script type="application/octet-stream" id="jv-enc">${blob}</script>\n`
-        : gate(blob, plain));
+        : gate(blob, plain, stamp));
       pages++;
     } else fs.writeFileSync(out, buf);
   }
@@ -175,7 +179,7 @@ async function build(packFile, outDir) {
   console.log("built", Object.keys(files).length, "files,", pages, "locked");
 }
 
-const [mode, x, y] = process.argv.slice(2);
-if (mode === "pack") await pack(x, y);
+const [mode, x, y, z] = process.argv.slice(2);
+if (mode === "pack") await pack(x, y, z);
 else if (mode === "build") await build(x, y);
 else { console.log("usage: node tools/site-lock.mjs pack <plainDir> <out.pack> | build <site.pack> <outDir>"); process.exit(1); }
