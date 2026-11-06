@@ -7,6 +7,12 @@
 //   node tools/site-lock.mjs pack  <plainDir> <out.pack> [ver]  seal a plain build (needs only the public key)
 //   node tools/site-lock.mjs build <out.pack> <outDir>          workflow: unseal + lock with $SITE_PASSWORD (needs $SITE_PACK_KEY)
 //
+// Media: on the first build the workflow downloads every Wix image/video the pages use and keeps them in media/
+// (each file AES-GCM encrypted with one data key, wrapped by the public key in media/key.json). Later builds reuse
+// them and only fetch new ones, so the published copy no longer depends on Wix. Pages point at m/<id>.<ext>.
+// Source: source.pack holds the site's source files, sealed the same way as site.pack (not published).
+//   node tools/site-lock.mjs source <srcDir> <out.pack>        seal the source backup
+//
 // Page lock: gzip + AES-GCM-256, key from PBKDF2-SHA256 (600,000 rounds), one salt for the whole site so one
 // unlock opens every page. "Remember me for 1 day" keeps the key for 24 hours; otherwise for the tab session.
 import fs from "node:fs";
@@ -151,6 +157,65 @@ ${footer}
 `;
 }
 
+const WIX = /https:\/\/(?:static|video)\.wixstatic\.com\/[^"'\s)<>]+/g;
+const MEDIA_DIR = path.join(HERE, "..", "media");
+function aesSeal(key, buf) { const iv = nodeCrypto.randomBytes(12), c = nodeCrypto.createCipheriv("aes-256-gcm", key, iv); return Buffer.concat([iv, c.update(buf), c.final(), c.getAuthTag()]); }
+function aesOpen(key, buf) { const d = nodeCrypto.createDecipheriv("aes-256-gcm", key, buf.subarray(0, 12)); d.setAuthTag(buf.subarray(buf.length - 16)); return Buffer.concat([d.update(buf.subarray(12, buf.length - 16)), d.final()]); }
+function mediaKey(priv) {
+  const kf = path.join(MEDIA_DIR, "key.json");
+  if (fs.existsSync(kf)) return nodeCrypto.privateDecrypt({ key: priv, padding: nodeCrypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" }, Buffer.from(JSON.parse(fs.readFileSync(kf, "utf8")).k, "base64"));
+  const key = nodeCrypto.randomBytes(32), pub = fs.readFileSync(path.join(HERE, "site.pub.pem"), "utf8");
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
+  fs.writeFileSync(kf, JSON.stringify({ k: b64(nodeCrypto.publicEncrypt({ key: pub, padding: nodeCrypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" }, key)) }));
+  return key;
+}
+const extOf = (u) => { const m = /\.(webp|jpe?g|png|gif|avif|svg|mp4|webm)$/i.exec(u.split("?")[0]); return m ? m[1].toLowerCase().replace("jpeg", "jpg") : "bin"; };
+const idOf = (u) => nodeCrypto.createHash("sha1").update(u).digest("hex").slice(0, 20);
+// GitHub copy only: one file per image (drop Wix size variants), Wix contact form removed (the email link stays).
+function prepPage(html) {
+  return html
+    .replace(/\s(?:srcset|imagesrcset|sizes|imagesizes)="[^"]*"/g, "")
+    .replace(/<script[^>]*src="js\/contact\.js"[^>]*><\/script>/g, "")
+    .replace(/<div id="contact-form"[\s\S]*?<\/noscript>\s*<\/div>/, "");
+}
+// GitHub copy keeps one video (the 1080p showreel) and only WebP images.
+const canon = (u) => u.replace(/(video\.wixstatic\.com\/video\/[^/]+\/)(?:360p|480p|720p)\//, "$11080p/");
+const isVideo = (u) => /video\.wixstatic\.com\//.test(u);
+const isWebp = (b) => b.length > 12 && b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP";
+let sharpLib = null;
+async function toWebp(buf) {
+  if (isWebp(buf)) return buf;
+  if (!sharpLib) sharpLib = (await import("sharp")).default;
+  return sharpLib(buf, { animated: true }).webp({ quality: 90, effort: 5 }).toBuffer();
+}
+async function syncMedia(pages, priv, outDir) {
+  const urls = new Set();
+  for (const h of Object.values(pages)) for (const m of h.matchAll(WIX)) urls.add(m[0].replace(/[,.]+$/, ""));
+  const key = mediaKey(priv), map = {}, done = {};
+  let fetched = 0, kept = 0, failed = [];
+  for (const u of urls) {
+    const c = canon(u), vid = isVideo(c);
+    if (done[c]) { map[u] = done[c]; continue; }
+    const id = idOf(c), ext = vid ? "mp4" : "webp", store = path.join(MEDIA_DIR, id + ".bin"), rel = "m/" + id + "." + ext;
+    let buf = null;
+    if (fs.existsSync(store)) { buf = aesOpen(key, fs.readFileSync(store)); kept++; }
+    else {
+      for (let t = 0; t < 3 && !buf; t++) {
+        try { const r = await fetch(c); if (r.ok) buf = Buffer.from(await r.arrayBuffer()); } catch {}
+      }
+      if (buf && !vid) { try { buf = await toWebp(buf); } catch (e) { console.log("could not convert", c, e.message); buf = null; } }
+      if (buf) { fs.writeFileSync(store, aesSeal(key, buf)); fetched++; } else failed.push(c);
+    }
+    if (buf) { fs.mkdirSync(path.join(outDir, "m"), { recursive: true }); fs.writeFileSync(path.join(outDir, rel), buf); map[u] = done[c] = rel; }
+  }
+  // drop backed-up files the site no longer uses, so the repo holds only current media
+  const live = new Set(Object.values(done).map((r) => path.basename(r).replace(/\.\w+$/, "") + ".bin"));
+  let removed = 0;
+  for (const f of fs.readdirSync(MEDIA_DIR)) if (f.endsWith(".bin") && !live.has(f) && !failed.some((x) => idOf(x) + ".bin" === f)) { fs.rmSync(path.join(MEDIA_DIR, f)); removed++; }
+  console.log("media:", Object.keys(done).length + failed.length, "files for", urls.size, "links,", kept, "from backup,", fetched, "downloaded,", removed, "unused removed,", failed.length, "unavailable");
+  if (failed.length) console.log("still on Wix:\n" + failed.join("\n"));
+  return map;
+}
 async function build(packFile, outDir) {
   const priv = process.env.SITE_PACK_KEY, pw = (process.env.SITE_PASSWORD || "").trim();
   if (!priv) throw new Error("Secret SITE_PACK_KEY is missing.");
@@ -161,25 +226,36 @@ async function build(packFile, outDir) {
   const stamp = (ver ? "Version " + ver + " · " : "") + "Published " + when.replace(/ (am|pm)$/i, (m) => m.toUpperCase()) + " (Dubai time)";
   const salt = crypto.getRandomValues(new Uint8Array(16)), key = await keyFor(pw, salt);
   fs.rmSync(outDir, { recursive: true, force: true });
-  let pages = 0;
+  const pages = {};
+  for (const [rel, data] of Object.entries(files)) if (rel.endsWith(".html") && !rel.includes("/")) pages[rel] = prepPage(Buffer.from(data, "base64").toString("utf8"));
+  const mmap = await syncMedia(pages, priv, outDir);
+  const local = (h) => h.replace(WIX, (u) => { const k = u.replace(/[,.]+$/, ""); return mmap[k] ? mmap[k] + u.slice(k.length) : u; });
+  let locked = 0;
   for (const [rel, data] of Object.entries(files)) {
     const out = path.join(outDir, rel);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     const buf = Buffer.from(data, "base64");
     if (rel.endsWith(".html") && !rel.includes("/") && !PLAIN.has(rel)) {
-      const plain = buf.toString("utf8"), blob = await enc(plain, key, salt);
+      const plain = local(pages[rel]), blob = await enc(plain, key, salt);
       fs.writeFileSync(out, DATA.has(rel)
         ? `<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><script type="application/octet-stream" id="jv-enc">${blob}</script>\n`
         : gate(blob, plain, stamp));
-      pages++;
+      locked++;
     } else fs.writeFileSync(out, buf);
   }
   fs.writeFileSync(path.join(outDir, "robots.txt"), "User-agent: *\nDisallow: /\n");
   fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
-  console.log("built", Object.keys(files).length, "files,", pages, "locked");
+  console.log("built", Object.keys(files).length, "files,", locked, "locked");
 }
 
 const [mode, x, y, z] = process.argv.slice(2);
 if (mode === "pack") await pack(x, y, z);
+else if (mode === "source") await pack(x, y, "source");
 else if (mode === "build") await build(x, y);
-else { console.log("usage: node tools/site-lock.mjs pack <plainDir> <out.pack> | build <site.pack> <outDir>"); process.exit(1); }
+else if (mode === "restore") { // restore <any.pack> <outDir> — needs SITE_PACK_KEY in env
+  if (!process.env.SITE_PACK_KEY) throw new Error("Set SITE_PACK_KEY to the private key first.");
+  const files = await unpack(x, process.env.SITE_PACK_KEY);
+  for (const [rel, data] of Object.entries(files)) { const o = path.join(y, rel); fs.mkdirSync(path.dirname(o), { recursive: true }); fs.writeFileSync(o, Buffer.from(data, "base64")); }
+  console.log("restored", Object.keys(files).length, "files to", y);
+}
+else { console.log("usage: node tools/site-lock.mjs pack <plainDir> <out.pack> [ver] | source <srcDir> <out.pack> | build <site.pack> <outDir> | restore <x.pack> <outDir>"); process.exit(1); }
