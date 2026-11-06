@@ -73,8 +73,13 @@ const CSS = `.lk{min-height:calc(100svh - var(--hh));display:grid;grid-template-
 .lk form{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
 .lk label{font-size:13px;color:var(--muted)}
 .lk-row{display:flex;gap:12px;align-items:stretch}
-.lk input[type=password]{flex:1;min-width:0;height:48px;border:0;border-bottom:1px solid var(--field);border-radius:0;background:transparent;color:var(--ink);font:inherit;font-size:17px;letter-spacing:.12em;padding:0}
-.lk input[type=password]:focus{outline:0;border-bottom-color:var(--ink)}
+.lk-pw{position:relative;flex:1;min-width:0;display:flex}
+.lk .lk-pw input{flex:1;padding-right:44px}
+.lk .lk-eye{position:absolute;right:0;top:0;width:44px;height:48px;padding:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.lk .lk-eye:hover{color:var(--ink)}
+.lk .lk-eye:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.lk .lk-pw input{flex:1;min-width:0;height:48px;border:0;border-bottom:1px solid var(--field);border-radius:0;background:transparent;color:var(--ink);font:inherit;font-size:17px;letter-spacing:.12em;padding:0}
+.lk .lk-pw input:focus{outline:0;border-bottom-color:var(--ink)}
 .lk button{height:48px;padding:0 24px;border:0;border-radius:0;background:var(--ink);color:var(--bg);font:inherit;font-size:15px;font-weight:500;cursor:pointer}
 .lk button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .lk button[disabled]{opacity:.6;cursor:progress}
@@ -103,8 +108,9 @@ function keep(k,rem){crypto.subtle.exportKey('raw',k).then(function(r){var v={k:
  try{sessionStorage.setItem(K,JSON.stringify(v))}catch(e){}if(rem){v.exp=Date.now()+864e5;try{localStorage.setItem(K,JSON.stringify(v))}catch(e){}}})}
 function show(k,h){window.JVLOCK={open:function(t){var m=/id="jv-enc"[^>]*>([^<]+)</.exec(t);if(!m)return Promise.resolve(t);var p=m[1].trim().split('.');return dec(k,p[1],p[2])}};
  document.open();document.write(h);document.close()}
-var d=document.documentElement,f=document.getElementById('sg-f'),i=document.getElementById('sg-pw'),rm=document.getElementById('sg-rm'),b=f.querySelector('button'),er=document.getElementById('sg-err');
+var d=document.documentElement,f=document.getElementById('sg-f'),i=document.getElementById('sg-pw'),rm=document.getElementById('sg-rm'),b=f.querySelector('button[type=submit]'),er=document.getElementById('sg-err');
 function ready(){d.classList.add('sg-ok')}
+var ey=document.querySelector('.lk-eye');if(ey)ey.addEventListener('click',function(){var s=i.type==='password';i.type=s?'text':'password';ey.setAttribute('aria-pressed',s?'true':'false');ey.setAttribute('aria-label',s?'Hide password':'Show password');ey.innerHTML=s?'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/></svg>':'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';i.focus()});
 if(!window.crypto||!crypto.subtle||!window.DecompressionStream){ready();er.textContent='This browser can\\'t open protected pages. Try a recent version of Chrome, Safari, Edge or Firefox.';b.disabled=true;return}
 stored().then(function(k){return k?dec(k,E[1],E[2]).then(function(h){show(k,h);return true}).catch(function(){forget();return false}):false}).then(function(ok){if(!ok){ready();i.focus()}});
 f.addEventListener('submit',function(ev){ev.preventDefault();var v=i.value.trim();if(!v){er.textContent='Enter the password.';i.focus();return}
@@ -134,7 +140,7 @@ function gate(blob, plain) {
 </head>
 <body>
 ${header}
-<main id="main" class="lk"><div class="lk-in"><p class="lk-eb">Portfolio</p><h1>Jerrin Varghese</h1><p class="lk-p">This copy of the portfolio is password protected. Enter the password to view it.</p><form id="sg-f" novalidate><label for="sg-pw">Password</label><div class="lk-row"><input id="sg-pw" type="password" autocomplete="current-password" required><button type="submit">Unlock</button></div><label class="lk-rm"><input id="sg-rm" type="checkbox"> Remember me for 1 day</label><p class="lk-err" id="sg-err" role="alert" aria-live="assertive"></p></form><p class="lk-note">The public site is <a href="https://www.jerrindesign.com">jerrindesign.com</a>.</p></div><noscript><p class="lk-err">Turn on JavaScript to open this page.</p></noscript></main>
+<main id="main" class="lk"><div class="lk-in"><p class="lk-eb">Portfolio</p><h1>Jerrin Varghese</h1><p class="lk-p">This copy of the portfolio is password protected. Enter the password to view it.</p><form id="sg-f" novalidate><label for="sg-pw">Password</label><div class="lk-row"><span class="lk-pw"><input id="sg-pw" type="password" autocomplete="current-password" required><button type="button" class="lk-eye" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span><button type="submit">Unlock</button></div><label class="lk-rm"><input id="sg-rm" type="checkbox"> Remember me for 1 day</label><p class="lk-err" id="sg-err" role="alert" aria-live="assertive"></p></form><p class="lk-note">The public site is <a href="https://www.jerrindesign.com">jerrindesign.com</a>.</p></div><noscript><p class="lk-err">Turn on JavaScript to open this page.</p></noscript></main>
 ${footer}
 <script type="application/octet-stream" id="jv-site">${blob}</script>
 <script>${JS}</script>
