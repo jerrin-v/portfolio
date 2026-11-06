@@ -23,7 +23,7 @@ Visitors can tick "Remember me for 1 day" to stay unlocked for 24 hours in that 
 - `site.pack` — every file of the site, sealed.
 - `media/` — every image the site shows (WebP) plus the 1080p showreel, each file sealed and published with the site.
 - Original uploads (full-quality PNG/JPG) stay in the Wix media library; this repo keeps only the WebP versions.
-- `source.pack` — the source files (page sources, CSS, build and push tools, content, notes, the old v7 archive), sealed.
+- `source.pack` — the source files (page sources, CSS, build and push tools, content, notes), sealed. The old v7 version is not kept here.
 - The workflow downloads new media from Wix once, saves it here (commit "Update sealed media backup") and removes what the site no longer uses.
 - The contact form on this copy is replaced by the email link (the form needs Wix).
 

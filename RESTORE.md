@@ -9,7 +9,7 @@ Everything needed to run and edit www.jerrindesign.com lives here, sealed with t
 |---|---|
 | `site.pack` | Every file of the live site (pages, CSS, JS, font, icons, SVG logos, sitemap, robots, Search Console file). |
 | `media/*.bin` | Every image the pages show (WebP, as served) and the 1080p showreel. Published with the site. |
-| `source.pack` | Source to rebuild and edit the site: page sources, CSS, content, build and push tools, notes, ADX generator, the old v7 archive. |
+| `source.pack` | Source to rebuild and edit the site: page sources, CSS, content, build and push tools, notes, ADX generator. |
 
 The workflow refreshes `media/` on every publish: new images are added, removed ones dropped.
 Original uploads (full-quality PNG/JPG) are **not** kept here: they stay in the Wix media library. Download them from Wix
