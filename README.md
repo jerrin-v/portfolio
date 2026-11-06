@@ -20,12 +20,13 @@ Visitors can tick "Remember me for 1 day" to stay unlocked for 24 hours in that 
 
 ## Full backup — works without Wix
 
-- `site.pack` — every page of the site, sealed.
-- `media/` — only the media the current site uses: every image as WebP, plus the 1080p showreel video, each file sealed.
-  The workflow downloads new ones from Wix once, saves them here (commit "Update sealed media backup") and removes ones the site
-  no longer uses, then serves them from GitHub. If Wix ever goes away, the copy keeps working from this folder.
-- `source.pack` — the source files (page sources, CSS, build tools, content, notes), sealed. Only the `SITE_PACK_KEY` private key opens it:
-  `node tools/site-lock.mjs restore source.pack <folder>` with `SITE_PACK_KEY` set (or ask Claude).
+- `site.pack` — every file of the site, sealed.
+- `media/` — every image the site shows (WebP) plus the 1080p showreel, each file sealed and published with the site.
+- Original uploads (full-quality PNG/JPG) stay in the Wix media library; this repo keeps only the WebP versions.
+- `source.pack` — the source files (page sources, CSS, build and push tools, content, notes, the old v7 archive), sealed.
+- The workflow downloads new media from Wix once, saves it here (commit "Update sealed media backup") and removes what the site no longer uses.
 - The contact form on this copy is replaced by the email link (the form needs Wix).
+
+**If Wix is ever gone, see [RESTORE.md](RESTORE.md)**: publish this copy without a password, make an offline copy, or rebuild from source.
 
 Note: page text is password-locked; images are sealed in the repo but, once published, an image file can be opened by anyone who has its exact link.

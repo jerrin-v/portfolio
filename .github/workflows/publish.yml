@@ -1,6 +1,7 @@
 # Publishes the password-protected site to GitHub Pages.
 # Saves the images (as WebP) and the showreel the site uses into the sealed media backup (media/), then
 # runs on every update to main, and from Actions → "Publish site" → Run workflow (use it after changing SITE_PASSWORD).
+# Repository variable SITE_PUBLIC=true publishes without a password (use only if Wix is gone).
 name: Publish site
 on:
   push:
@@ -27,6 +28,7 @@ jobs:
         env:
           SITE_PACK_KEY: ${{ secrets.SITE_PACK_KEY }}
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          SITE_PUBLIC: ${{ vars.SITE_PUBLIC }}
         run: node tools/site-lock.mjs build site.pack _site
       - name: Save new media to the sealed backup
         run: |

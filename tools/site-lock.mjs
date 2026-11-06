@@ -12,6 +12,8 @@
 // them and only fetch new ones, so the published copy no longer depends on Wix. Pages point at m/<id>.<ext>.
 // Source: source.pack holds the site's source files, sealed the same way as site.pack (not published).
 //   node tools/site-lock.mjs source <srcDir> <out.pack>        seal the source backup
+//   node tools/site-lock.mjs export <outDir>                   full offline copy: unlocked site with its WebP media (needs $SITE_PACK_KEY)
+// SITE_PUBLIC=true (repository variable) publishes without a password. Original uploads stay on Wix (only WebP is kept here).
 //
 // Page lock: gzip + AES-GCM-256, key from PBKDF2-SHA256 (600,000 rounds), one salt for the whole site so one
 // unlock opens every page. "Remember me for 1 day" keeps the key for 24 hours; otherwise for the tab session.
@@ -218,8 +220,9 @@ async function syncMedia(pages, priv, outDir) {
 }
 async function build(packFile, outDir) {
   const priv = process.env.SITE_PACK_KEY, pw = (process.env.SITE_PASSWORD || "").trim();
+  const pub = /^(1|true|yes)$/i.test((process.env.SITE_PUBLIC || "").trim());
   if (!priv) throw new Error("Secret SITE_PACK_KEY is missing.");
-  if (!pw) throw new Error("Secret SITE_PASSWORD is missing. Add it under Settings → Secrets and variables → Actions.");
+  if (!pw && !pub) throw new Error("Secret SITE_PASSWORD is missing. Add it under Settings → Secrets and variables → Actions.");
   const files = await unpack(packFile, priv);
   const ver = JSON.parse(fs.readFileSync(packFile, "utf8")).ver || "";
   const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Dubai", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date());
@@ -235,6 +238,7 @@ async function build(packFile, outDir) {
     const out = path.join(outDir, rel);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     const buf = Buffer.from(data, "base64");
+    if (pub && rel.endsWith(".html") && !rel.includes("/")) { fs.writeFileSync(out, local(pages[rel])); continue; }
     if (rel.endsWith(".html") && !rel.includes("/") && !PLAIN.has(rel)) {
       const plain = local(pages[rel]), blob = await enc(plain, key, salt);
       fs.writeFileSync(out, DATA.has(rel)
@@ -243,7 +247,8 @@ async function build(packFile, outDir) {
       locked++;
     } else fs.writeFileSync(out, buf);
   }
-  fs.writeFileSync(path.join(outDir, "robots.txt"), "User-agent: *\nDisallow: /\n");
+  if (!pub) fs.writeFileSync(path.join(outDir, "robots.txt"), "User-agent: *\nDisallow: /\n");
+  if (pub) console.log("SITE_PUBLIC is on: pages published WITHOUT a password");
   fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
   console.log("built", Object.keys(files).length, "files,", locked, "locked");
 }
@@ -252,6 +257,12 @@ const [mode, x, y, z] = process.argv.slice(2);
 if (mode === "pack") await pack(x, y, z);
 else if (mode === "source") await pack(x, y, "source");
 else if (mode === "build") await build(x, y);
+else if (mode === "export") { // export <outDir> — unlocked offline copy with its WebP media; needs SITE_PACK_KEY
+  if (!process.env.SITE_PACK_KEY) throw new Error("Set SITE_PACK_KEY to the private key first.");
+  process.env.SITE_PUBLIC = "true";
+  await build(path.join(HERE, "..", "site.pack"), x);
+  console.log("exported unlocked site to", x);
+}
 else if (mode === "restore") { // restore <any.pack> <outDir> — needs SITE_PACK_KEY in env
   if (!process.env.SITE_PACK_KEY) throw new Error("Set SITE_PACK_KEY to the private key first.");
   const files = await unpack(x, process.env.SITE_PACK_KEY);
