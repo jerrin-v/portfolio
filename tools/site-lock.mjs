@@ -13,6 +13,7 @@
 // Source: source.pack holds the site's source files, sealed the same way as site.pack (not published).
 //   node tools/site-lock.mjs source <srcDir> <out.pack>        seal the source backup
 //   node tools/site-lock.mjs export <outDir>                   full offline copy: unlocked site with its WebP media (needs $SITE_PACK_KEY)
+//   node tools/site-lock.mjs unseal <media/x.bin> <outFile>    open one sealed media file, e.g. media/backup/* (needs $SITE_PACK_KEY)
 // SITE_PUBLIC=true (repository variable) publishes without a password. Original uploads stay on Wix (only WebP is kept here).
 //
 // Page lock: gzip + AES-GCM-256, key from PBKDF2-SHA256 (600,000 rounds), one salt for the whole site so one
@@ -274,4 +275,9 @@ else if (mode === "restore") { // restore <any.pack> <outDir> — needs SITE_PAC
   for (const [rel, data] of Object.entries(files)) { const o = path.join(y, rel); fs.mkdirSync(path.dirname(o), { recursive: true }); fs.writeFileSync(o, Buffer.from(data, "base64")); }
   console.log("restored", Object.keys(files).length, "files to", y);
 }
-else { console.log("usage: node tools/site-lock.mjs pack <plainDir> <out.pack> [ver] | source <srcDir> <out.pack> | build <site.pack> <outDir> | restore <x.pack> <outDir>"); process.exit(1); }
+else if (mode === "unseal") { // unseal <media/x.bin> <outFile> — open one sealed media file (e.g. media/backup/*); needs SITE_PACK_KEY
+  if (!process.env.SITE_PACK_KEY) throw new Error("Set SITE_PACK_KEY to the private key first.");
+  fs.writeFileSync(y, aesOpen(mediaKey(process.env.SITE_PACK_KEY), fs.readFileSync(x)));
+  console.log("unsealed", x, "to", y);
+}
+else { console.log("usage: node tools/site-lock.mjs pack <plainDir> <out.pack> [ver] | source <srcDir> <out.pack> | build <site.pack> <outDir> | restore <x.pack> <outDir> | unseal <media/x.bin> <outFile>"); process.exit(1); }

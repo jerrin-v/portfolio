@@ -9,6 +9,7 @@ Everything needed to run and edit www.jerrindesign.com lives here, sealed with t
 |---|---|
 | `site.pack` | Every file of the live site (pages, CSS, JS, font, icons, SVG logos, sitemap, robots, Search Console file). |
 | `media/*.bin` | Every image the pages show (WebP, as served) and the 1080p showreel. Published with the site. |
+| `media/backup/` | Retired media kept on purpose (Showreel 2025). Open with `node tools/site-lock.mjs unseal <file> <out>`. |
 | `source.pack` | Source to rebuild and edit the site: page sources, CSS, content, build and push tools, notes, ADX generator. |
 
 The workflow refreshes `media/` on every publish: new images are added, removed ones dropped.
