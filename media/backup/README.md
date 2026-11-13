@@ -5,6 +5,7 @@ Files here are kept on purpose and are never removed by the publish workflow (it
 | File | What it is |
 |---|---|
 | `showreel-2025-614b8745c2c07c349be3.bin` | Showreel 2025, 1080p MP4 (38.5 s), replaced on the site by Showreel 2026 in 8.0.61 (10 Nov 2026). Wix source: video `62522e_edae0734c1fd4dbf86f7c25fc47b6055` (still in Wix). |
+| `showreel-2026-first-cut-85c0d37036c39cc40d3d.bin` | Showreel 2026 first cut, 1080p MP4, live 8.0.61 to 8.0.67; replaced in 8.0.68 (13 Nov 2026) by the new landscape + portrait cuts. Wix source: video `62522e_e2224431cbe4472a99ccf930574b6c25`. |
 
 Each `.bin` is sealed like the rest of `media/` (AES-GCM with the data key in `media/key.json`, which only `SITE_PACK_KEY` can unwrap). To open one:
 
