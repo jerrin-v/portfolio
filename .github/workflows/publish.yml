@@ -1,0 +1,72 @@
+# Publishes the password-protected site to GitHub Pages.
+# Saves the images (as WebP) and the showreel the site uses into the sealed media backup (media/), then
+# runs on every update to main, and from Actions → "Publish site" → Run workflow (use it after changing SITE_PASSWORD).
+# After a successful deploy it records the publish (version, Dubai and UTC time, commit) in README.md.
+# Repository variable SITE_PUBLIC=true publishes without a password (use only if Wix is gone).
+name: Publish site
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install the WebP converter
+        run: npm install --no-save --no-package-lock sharp@0.33.5
+      - name: Build the locked site
+        env:
+          SITE_PACK_KEY: ${{ secrets.SITE_PACK_KEY }}
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          SITE_PUBLIC: ${{ vars.SITE_PUBLIC }}
+          SITE_BASE: ${{ vars.SITE_BASE }}
+        run: node tools/site-lock.mjs build site.pack _site
+      - name: Save new media to the sealed backup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -A media
+          if git diff --cached --quiet; then echo "No new media"; else git commit -m "Update sealed media backup" && git push; fi
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
+  log:
+    # After a successful deploy: add this publish to the "Last 3 successful publishes" table in README.md.
+    needs: deploy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Record this publish in README
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          node tools/log-publish.mjs "${{ github.sha }}" "${{ github.run_number }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          git add README.md
+          git commit -m "Log publish #${{ github.run_number }} [skip ci]"
+          git push
