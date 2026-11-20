@@ -7,9 +7,9 @@ Website: **https://jerrin-v.github.io/portfolio/** (password protected) · main 
 <!-- publishes:start -->
 | Version | Published (Dubai time) | UTC | Commit | Run |
 |---|---|---|---|---|
+| 8.0.86 | Fri, 20 Nov 2026, 5:26:54 PM (Dubai) | 2026-11-20 13:26:54 UTC | [9bd6e5b](https://github.com/jerrin-v/portfolio/commit/9bd6e5be141b1838bdbc0f3736f4465bc4c4220a) | [#52](https://github.com/jerrin-v/portfolio/actions/runs/44744228077) |
 | 8.0.85 | Fri, 20 Nov 2026, 12:34:05 PM (Dubai) | 2026-11-20 08:34:05 UTC | [dac5501](https://github.com/jerrin-v/portfolio/commit/dac550116b65f906d02c9e2a53038cddbf66b712) | [#51](https://github.com/jerrin-v/portfolio/actions/runs/44703443660) |
 | 8.0.84 | Fri, 20 Nov 2026, 11:21:09 AM (Dubai) | 2026-11-20 07:21:09 UTC | [ecfe323](https://github.com/jerrin-v/portfolio/commit/ecfe3232b4dd4f61868eab2327bba86542186d58) | [#50](https://github.com/jerrin-v/portfolio/actions/runs/44694188237) |
-| 8.0.83 | Fri, 20 Nov 2026, 10:32:00 AM (Dubai) | 2026-11-20 06:32:00 UTC | [198d1ba](https://github.com/jerrin-v/portfolio/commit/198d1ba9253a0d662e096e1fcb72564b8603dfd3) | [#49](https://github.com/jerrin-v/portfolio/actions/runs/44688336182) |
 <!-- publishes:end -->
 
 Updated automatically after every successful publish.
