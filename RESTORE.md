@@ -8,7 +8,7 @@ Everything needed to run and edit www.jerrindesign.com lives here, sealed with t
 | Part | What it is |
 |---|---|
 | `site.pack` | Every file of the live site (pages, CSS, JS, font, icons, SVG logos, sitemap, robots, Search Console file). |
-| `media/*.bin` | Every image the pages show (WebP, as served) and the 1080p showreel. Published with the site. |
+| `media/*.bin` | Every image the pages show (WebP, as served) and the 1080p showreel. Published with the site. Named like the Wix Media Manager (`media/names.json`: Wix file id → name). |
 | `media/backup/` | Retired media kept on purpose (Showreel 2025). Open with `node tools/site-lock.mjs unseal <file> <out>`. |
 | `source.pack` | Source to rebuild and edit the site: page sources, CSS, content, build and push tools, notes, ADX generator. |
 

@@ -174,6 +174,27 @@ function mediaKey(priv) {
 }
 const extOf = (u) => { const m = /\.(webp|jpe?g|png|gif|avif|svg|mp4|webm)$/i.exec(u.split("?")[0]); return m ? m[1].toLowerCase().replace("jpeg", "jpg") : "bin"; };
 const idOf = (u) => nodeCrypto.createHash("sha1").update(u).digest("hex").slice(0, 20);
+// 8.0.87: media files are named like the Wix Media Manager (media/names.json: Wix file id -> display name), e.g.
+// "Eagle Pro - Login page ..." -> media/eagle-pro-login-page-....bin and m/eagle-pro-login-page-....webp.
+// A second use of the same Wix file with a different crop/size gets -share / -crop / -2 ... Files not in names.json keep the hash name.
+let NAMES = null;
+const slugify = (s) => s.replace(/\.(webp|jpe?g|png|gif|mp4)$/i, "").normalize("NFKD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/&/g, " and ").replace(/'/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 90).replace(/-+$/, "");
+function namePlan(urls) {
+  if (!NAMES) { try { NAMES = JSON.parse(fs.readFileSync(path.join(MEDIA_DIR, "names.json"), "utf8")); } catch { NAMES = {}; } }
+  const plan = {}, used = new Set();
+  for (const c of [...urls].sort()) {
+    let m = /video\.wixstatic\.com\/video\/62522e_([0-9a-f]+)\//.exec(c), key = m && m[1];
+    if (!key && (m = /\/media\/62522e_([0-9a-f]+(?:f000)?)(?:~mv2)?\.([a-z0-9]+)/i.exec(c))) key = m[1] + "." + m[2].toLowerCase();
+    const base = key && NAMES[key] ? slugify(NAMES[key]) : "";
+    if (!base) { plan[c] = idOf(c); continue; }
+    let n = base;
+    if (used.has(n)) n = base + (/\/fill\/w_1200,h_630/.test(c) ? "-share" : /\/crop\//.test(c) ? "-crop" : "");
+    for (let k = 2; used.has(n); k++) n = base + "-" + k;
+    used.add(n); plan[c] = n;
+  }
+  return plan;
+}
 // GitHub copy only: one file per image (drop Wix size variants), Wix contact form removed (the email link stays).
 // GitHub Pages serves the site under /<repo>/, so root links ("/jv-icon.svg") become relative and the 404 page's
 // <base href="/"> points at the site folder. SITE_BASE overrides it (set it to "/" when a custom domain is used).
@@ -200,11 +221,14 @@ async function syncMedia(pages, priv, outDir) {
   const urls = new Set();
   for (const h of Object.values(pages)) for (const m of h.matchAll(WIX)) urls.add(m[0].replace(/[,.]+$/, ""));
   const key = mediaKey(priv), map = {}, done = {};
-  let fetched = 0, kept = 0, failed = [];
+  let fetched = 0, kept = 0, failed = [], renamed = 0;
+  const plan = namePlan(new Set([...urls].map(canon)));
   for (const u of urls) {
     const c = canon(u), vid = isVideo(c);
     if (done[c]) { map[u] = done[c]; continue; }
-    const id = idOf(c), ext = vid ? "mp4" : "webp", store = path.join(MEDIA_DIR, id + ".bin"), rel = "m/" + id + "." + ext;
+    const id = plan[c], ext = vid ? "mp4" : "webp", store = path.join(MEDIA_DIR, id + ".bin"), rel = "m/" + id + "." + ext;
+    const legacy = path.join(MEDIA_DIR, idOf(c) + ".bin");   // backups made before 8.0.87 used the hash name
+    if (!fs.existsSync(store) && fs.existsSync(legacy)) { fs.renameSync(legacy, store); renamed++; }
     let buf = null;
     if (fs.existsSync(store)) { buf = aesOpen(key, fs.readFileSync(store)); kept++; }
     else {
@@ -219,8 +243,8 @@ async function syncMedia(pages, priv, outDir) {
   // drop backed-up files the site no longer uses, so the repo holds only current media
   const live = new Set(Object.values(done).map((r) => path.basename(r).replace(/\.\w+$/, "") + ".bin"));
   let removed = 0;
-  for (const f of fs.readdirSync(MEDIA_DIR)) if (f.endsWith(".bin") && !live.has(f) && !failed.some((x) => idOf(x) + ".bin" === f)) { fs.rmSync(path.join(MEDIA_DIR, f)); removed++; }
-  console.log("media:", Object.keys(done).length + failed.length, "files for", urls.size, "links,", kept, "from backup,", fetched, "downloaded,", removed, "unused removed,", failed.length, "unavailable");
+  for (const f of fs.readdirSync(MEDIA_DIR)) if (f.endsWith(".bin") && !live.has(f) && !failed.some((x) => plan[x] + ".bin" === f || idOf(x) + ".bin" === f)) { fs.rmSync(path.join(MEDIA_DIR, f)); removed++; }
+  console.log("media:", Object.keys(done).length + failed.length, "files for", urls.size, "links,", kept, "from backup,", fetched, "downloaded,", renamed, "renamed,", removed, "unused removed,", failed.length, "unavailable");
   if (failed.length) console.log("still on Wix:\n" + failed.join("\n"));
   return map;
 }
@@ -263,6 +287,20 @@ const [mode, x, y, z] = process.argv.slice(2);
 if (mode === "pack") await pack(x, y, z);
 else if (mode === "source") await pack(x, y, "source");
 else if (mode === "build") await build(x, y);
+else if (mode === "medianames") { // medianames <plainDir> [--apply] — show (or apply) the readable media names; no key needed
+  const urls = new Set();
+  for (const f of fs.readdirSync(x)) if (f.endsWith(".html")) for (const m of prepPage(fs.readFileSync(path.join(x, f), "utf8")).matchAll(WIX)) urls.add(canon(m[0].replace(/[,.]+$/, "")));
+  const plan = namePlan(urls);
+  let have = 0, missing = 0, unnamed = 0;
+  for (const [c, n] of Object.entries(plan)) {
+    const legacy = path.join(MEDIA_DIR, idOf(c) + ".bin"), store = path.join(MEDIA_DIR, n + ".bin");
+    if (n === idOf(c)) unnamed++;
+    if (fs.existsSync(store)) have++;
+    else if (fs.existsSync(legacy)) { have++; if (y === "--apply") fs.renameSync(legacy, store); }
+    else { missing++; console.log("new:", n); }
+  }
+  console.log(Object.keys(plan).length, "media,", have, "in backup,", missing, "to download,", unnamed, "without a name");
+}
 else if (mode === "export") { // export <outDir> — unlocked offline copy with its WebP media; needs SITE_PACK_KEY
   if (!process.env.SITE_PACK_KEY) throw new Error("Set SITE_PACK_KEY to the private key first.");
   process.env.SITE_PUBLIC = "true";
